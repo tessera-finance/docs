@@ -1,0 +1,61 @@
+---
+title: "Invariants"
+description: "What the protocol guarantees, and how those guarantees are enforced on-chain."
+---
+
+The protocol's invariants are the contractual claims about what cannot happen, regardless of input or sequencing. They are the guarantees an issuer, lender, solver, or auditor can rely on.
+
+## The invariants
+
+| # | Invariant | Enforcement |
+|---|---|---|
+| **I1** | No settled auction transferred collateral to a non-compliant recipient. | Bid-time compliance check + transfer-hook re-check at `safeTransfer`. |
+| **I3** | Bid is atomic. When `bid()` results in settlement, all 5 settlement steps complete in one tx. When `bid()` results in `BidRejected`, no state changes occur. | Single transaction, all-or-nothing revert semantics. |
+| **I4** | Settled auctions are terminal — `Settled` status never reverts. | State machine forbids transitions out of `Settled`. |
+| **I6** | Only allowlisted lenders can call `requestLiquidation`. | `LiquidationRouter` checks `REGISTRY.allowedLenders[msg.sender]`. |
+| **I7** | Auctions are only created from fresh oracle data (within the asset class's `stalenessWindow`). | Router checks `block.timestamp - oracle.lastUpdated(token) ≤ stalenessWindow`. |
+| **I8** | Floor price always satisfies `minFloor ≤ floor ≤ maxFloor` and `floor < startPrice`. | Auction creation reverts on `FloorOutOfBounds` / `FloorAboveStart`. |
+| **I11** | Every `BidRejected` event corresponds to a non-compliant recipient at that block. | Adapter call result is the only path that emits `BidRejected`. |
+| **I12** | Every successful `AuctionSettled` was preceded in the same tx by exactly one `ComplianceChecked(passed=true)` for the same `(auctionId, solver)`. | Settlement path is reachable only via `passed=true`. |
+
+## Why each matters
+
+<AccordionGroup>
+  <Accordion title="I1 — No transfer to non-compliant recipient" icon="shield">
+    The headline guarantee. The whole point of building Tessera on identity-aware infrastructure is that the protocol cannot be used to circumvent the issuer's compliance regime. Two-line defense (bid-time check + transfer-hook re-check) ensures this holds even under adversarial sequencing.
+  </Accordion>
+  <Accordion title="I3 — Bid atomicity" icon="lock">
+    Lenders need to know that a "successful" bid means money moved AND collateral moved AND the auction is closed. Solvers need to know that a "failed" bid means none of those happened. Atomicity is the contract.
+  </Accordion>
+  <Accordion title="I4 — Terminal settlement" icon="flag-checkered">
+    Once an auction is `Settled`, it stays settled. No replays, no rollbacks, no surprise mutations. Solvers can update their internal state immediately on settlement without needing to wait for finality games.
+  </Accordion>
+  <Accordion title="I6 — Lender allowlist" icon="users">
+    Without this, anyone could initiate a liquidation against any registered token. Lender allowlisting is the protocol's perimeter — only counterparties who have agreed to operate under Tessera's parameters can use the auction infrastructure.
+  </Accordion>
+  <Accordion title="I7 — Oracle freshness" icon="clock">
+    Stale oracle data leads to absurd start prices and broken auctions. Per-asset-class staleness lets the protocol accommodate quarterly NAV assets without giving up the freshness gate for daily NAV assets.
+  </Accordion>
+  <Accordion title="I8 — Floor bounds" icon="ruler">
+    Prevents both griefing (lender sets floor at 0.001%) and unrealistic optimism (lender sets floor above start). Lender freedom on floor sits within protocol-enforced rails.
+  </Accordion>
+  <Accordion title="I11 — Auditability of rejections" icon="magnifying-glass">
+    Without this, `BidRejected` events could be emitted speculatively or by error paths. With it, every rejection is a real on-chain claim that *this address was non-compliant at this block*. Critical for the audit trail.
+  </Accordion>
+  <Accordion title="I12 — Settlement provenance" icon="check-double">
+    Every successful settlement is preceded by an explicit pass on the compliance check, in the same transaction, for the same solver. There is no path to settlement that bypasses compliance.
+  </Accordion>
+</AccordionGroup>
+
+## What we don't claim
+
+Equally important: things that are **not** invariants, and that we don't pretend to guarantee.
+
+- **Auction always clears.** If no solver bids before deadline, the auction expires. The lender falls back to the issuer's `forceTransfer`. Tessera does not promise a successful clearing.
+- **Clearing price is fair.** The protocol does not compute fair value. Solver competition produces clearing prices, and the price reflects what solvers are willing to pay given the asset's distressed state.
+- **Recovery for the lender.** The protocol does not guarantee any particular recovery percentage. The lender's expected recovery is a function of the floor they set, the asset class, the solver pool, and the underlying value at the time.
+- **Solver always wins what they bid for.** Race conditions resolve via normal Ethereum tx ordering. A solver who bids and loses the race pays no gas beyond the failed transaction.
+
+## Test coverage
+
+Invariants are verified in an invariant test suite running against forked mainnet at pinned blocks with the real Aqua bytecode. The fuzz suite is the long-running form of correctness verification. Static analysis and human audit complement it.

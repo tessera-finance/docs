@@ -1,0 +1,82 @@
+---
+title: "Auction Mechanism"
+description: "Dutch decay math, per-asset-class parameters, and bidding strategy."
+---
+
+## Why a Dutch auction
+
+Three considerations specific to long-tail RWA liquidation:
+
+1. **Information asymmetry favors the well-informed.** A solver with superior pricing models or proprietary credit information can wait for the price to drop to their reservation and bid first. This selects toward better-informed participants and produces clearing prices closer to true value. A sealed-bid first-price auction in this context produces winner's-curse dynamics and noisier clearing.
+2. **Settlement speed favors lenders.** A Dutch auction can settle within seconds of opening if a solver is willing to pay the start price. Commit-reveal sealed bid introduces multi-block delay between auction start and clearing — every block of delay potentially worsens the lender's recovery prospects.
+3. **Bot complexity is low.** A solver bot runs a simple loop: monitor current price, compare to reservation, bid when below threshold. The low complexity barrier broadens the participant set, which deepens competition and tightens clearing prices.
+
+## Linear price decay
+
+```
+elapsed     = block.timestamp - startTime
+duration    = deadline - startTime
+priceRange  = startPrice - floorPrice
+decayed     = priceRange × elapsed / duration
+currentPrice = startPrice - decayed
+```
+
+Linear from start to floor over the duration. After deadline, `currentPrice` returns `floorPrice` and the auction is unbiddable until cancelled.
+
+## Per-asset-class calibration
+
+Auction parameters are calibrated per asset class rather than uniformly. Defaults are governance-set in the registry; lenders may override the floor at the time of liquidation within protocol bounds.
+
+| Asset class | Start price | Default floor | Duration | Oracle staleness |
+|---|---|---|---|---|
+| Money market funds | 102% NAV | 95% NAV | 15 min | 24 h |
+| Private credit | 105% NAV | 75% NAV | 30 min | 30 d |
+| Real estate SPVs | 110% NAV | 60% NAV | 60 min | 90 d |
+
+These are starting points. Per-deployment governance can adjust.
+
+<Note>
+  Durations may be shortened in demonstration deployments so the full lifecycle is observable on human timescales. Production durations track the asset class's underlying NAV cadence.
+</Note>
+
+## Lender-set floor
+
+Earlier protocol drafts hardcoded a 70% floor. This was a design error.
+
+In adverse scenarios — a regional credit fund experiencing borrower defaults, a real estate SPV facing an asset-level loss event — true market clearing price may fall below 70% of stale NAV. A hardcoded floor would result in failed auctions, with the lender forced to take back illiquid assets.
+
+The corrected design lets the lender set the floor at the time of liquidation, within protocol-enforced bounds:
+
+- The lender cannot set an absurdly low floor (griefing).
+- The lender cannot set a floor above the most recent oracle reading (unrealistic optimism).
+- Within those bounds, the lender chooses the parameter that reflects their assessment of the asset's distressed value.
+
+The lender bears the deficit risk. The lender owns the floor decision.
+
+## Stale oracles, live discovery
+
+For assets with quarterly NAV updates, the most recent oracle reading at the moment of liquidation may be 90 days old. The price in the oracle is, in this context, **an anchor rather than a clearing price** — it tells us roughly where the market was at the last formal valuation, but the auction's price discovery is doing the real work of determining current fair value.
+
+This means the auction parameters become more important for stale-NAV assets, not less. Solver bidding behavior must be calibrated to the additional uncertainty. The protocol does not pretend the oracle is doing more than anchoring.
+
+## Solver bidding strategy
+
+A rational solver maintains a per-asset valuation model that incorporates the most recent NAV reading, any private information about the underlying, an assessment of the time-value of capital during any redemption window, and a risk premium for execution uncertainty. The reservation price is the price at which expected return justifies the bid given all of these factors.
+
+When an auction opens, the solver observes price decay and bids when the current price drops to or below their reservation. If multiple solvers have similar reservations, the first to submit wins; race conditions resolve through normal Ethereum transaction ordering.
+
+In equilibrium, clearing prices reflect the marginal solver's reservation, which reflects the asset's true distressed value plus a small spread for capital and operational costs.
+
+For asset classes with stale NAVs and substantial underlying uncertainty, equilibrium clearing prices may carry larger spreads than for assets with frequent oracle updates. Solvers participating in these classes are typically credit specialists with their own valuation models that supplement the protocol's oracle reading; the spread is appropriate compensation for that underwriting work.
+
+## Failure paths
+
+| Failure | Result |
+|---|---|
+| Bid eligibility check fails (compliance) | Emit `BidRejected`, no state change. Auction stays Active. |
+| Bid eligibility check fails (solver state, strategy missing) | Revert. Caller-side bug. |
+| Insufficient virtual balance | Revert (Aqua's own behavior). |
+| Settlement adapter error mid-bid | Revert. Bid is fully unwound. |
+| Deadline passes without clearing | Auction transitions to `Failed` (or `Expired` in dashboard view). Collateral returns to lender. |
+
+Across all failure paths, [protocol invariants](/protocol/invariants) are preserved.

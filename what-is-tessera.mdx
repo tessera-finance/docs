@@ -1,0 +1,57 @@
+---
+title: "What Tessera Does"
+description: "The protocol in one paragraph, the three-actor structure, the four-layer architecture."
+---
+
+## The protocol in one paragraph
+
+Tessera is a liquidation auction protocol that runs Dutch auctions for permissioned RWA collateral, gates participation through identity registry verification at the issuer's discretion, settles atomically through a pluggable settlement adapter (with 1inch Aqua as the default), supports per-asset-class oracle staleness and lender-set price floors, and offers solvers a unified onboarding path across multiple issuers via a curated solver registry with bond posting and performance tracking. The protocol takes a per-auction fee for facilitating compliant matching between distressed lenders and qualified solvers; it does not custody funds outside transient settlement, does not match orders, does not set prices, and does not take economic positions.
+
+## The three-actor structure
+
+Three distinct participants interact with the protocol, each with a clear incentive structure.
+
+<CardGroup cols={3}>
+  <Card title="Lending protocols" icon="vault">
+    Hold permissioned RWA collateral on behalf of borrowers and need a recovery pathway when positions become undercollateralized. Pay a per-auction fee in exchange for guaranteed liquidation infrastructure.
+  </Card>
+  <Card title="KYC'd solvers" icon="bolt">
+    Provide stablecoin liquidity in exchange for the chance to acquire distressed collateral at a discount to NAV. Screened through Tessera's solver registry and verified in each issuer's identity registry.
+  </Card>
+  <Card title="ERC-3643 issuers" icon="building">
+    Benefit indirectly. Compliant liquidation infrastructure expands the borrowing utility of their tokens, deepens secondary markets, and increases investor demand for primary issuance.
+  </Card>
+</CardGroup>
+
+The fee is taken from the solver's stablecoin payment, so the lender's effective recovery is the auction clearing price minus the protocol fee. Issuers pay no per-auction fees.
+
+## The auction lifecycle
+
+A lending protocol detects that a borrower's position requires liquidation. It calls Tessera's liquidation router with the seizable collateral amount, the desired quote token, and the auction parameters appropriate to the asset class. Tessera validates that the lender is registered, that the relevant oracle is fresh under the per-asset-class staleness rule, and that the auction parameters are within the protocol-enforced bounds. The protocol takes custody of the collateral in trust for the duration of the auction.
+
+The auction runs as a Dutch decay from a starting price (typically slightly above NAV) toward a floor (set by the lender within protocol bounds) over a defined duration. KYC'd solvers monitor active auctions through Tessera's event stream. When the price falls to a level a solver is willing to pay, the solver submits a bid in a single transaction. The bid is gated by three checks: solver registry status, identity registry verification in the relevant token's compliance contract, and bond solvency. If all three pass, settlement executes atomically through the chosen settlement adapter.
+
+If no solver bids before the deadline, the auction enters a failed state and the collateral is returned to the lender, who may exercise the issuer's forced transfer mechanism as a fallback. This fallback path is intentionally available — it is the lender's pre-existing capability — but is rare in healthy markets.
+
+## The four-layer architecture
+
+The protocol consists of four conceptual layers.
+
+<AccordionGroup>
+  <Accordion title="Registry layer" icon="layer-group">
+    Maintains protocol metadata: which lending protocols are authorized to initiate liquidations, which oracles are authoritative for which collateral tokens, what the per-asset-class staleness window is, where protocol fees are routed, and which settlement adapter is in use.
+  </Accordion>
+  <Accordion title="Identity and bond layer" icon="id-card">
+    Governs solver eligibility through the solver registry (state machine, bond accounting, exposure tracking) and bridges issuer compliance contracts through the [compliance adapter](/protocol/compliance-model) — a thin facade that translates between the auction layer's needs and whatever underlying compliance mechanism the issuer has implemented.
+  </Accordion>
+  <Accordion title="Auction layer" icon="gavel">
+    Implements the [Dutch auction state machine](/protocol/auction-mechanism), the per-asset-class price decay parameters, and the eligibility checks that gate every bid. This is the core of the protocol and is independent of the settlement mechanism beneath it.
+  </Accordion>
+  <Accordion title="Settlement layer" icon="arrows-rotate">
+    The abstracted interface that performs the atomic capital movement. The default implementation uses 1inch Aqua's shared-allowance primitive. Alternative implementations (escrow, permit) are described in [Settlement Adapters](/protocol/settlement-adapters).
+  </Accordion>
+</AccordionGroup>
+
+These layers compose with explicit interfaces. The auction layer does not depend on Aqua specifically — it depends on the abstract semantics of atomic pull-and-push capital movement. Substituting a different settlement primitive requires only a new adapter implementation, with no changes to the auction layer or the registry.
+
+This separation of concerns is one of the most important architectural choices in the protocol and the basis for the [dependency-management discussion](/protocol/settlement-adapters#the-aqua-dependency-treated-honestly).

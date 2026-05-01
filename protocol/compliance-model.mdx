@@ -1,0 +1,88 @@
+---
+title: "Compliance Model"
+description: "Delegation to the issuer's identity registry, two-stage solver verification, and the compliance adapter library."
+---
+
+## Delegation, not duplication
+
+Tessera's compliance architecture rests on a single principle: **the issuer's identity registry is the source of truth for who can hold their token.** The protocol does not maintain its own list of verified investors, does not perform its own KYC, and does not make independent judgments about who should or should not be eligible to receive a particular token.
+
+When a solver bids on an auction, Tessera's only compliance question is whether the issuer's registry currently lists the solver as verified. If yes, the solver can receive. If no, the solver cannot.
+
+<Note>
+  This delegation is essential. ERC-3643 issuers operate under specific regulatory regimes — Reg D in the US, MiFID II's professional client classification in the EU, MAS qualified investor frameworks in Singapore. Tessera, as liquidation infrastructure, has neither the information nor the regulatory standing to make these determinations. Delegation is the only architecturally coherent choice.
+</Note>
+
+## The two-stage verification
+
+Every solver passes through two distinct verification steps before they can win an auction.
+
+<Steps>
+  <Step title="Tessera solver registry">
+    Post a stablecoin bond, provide a reference to an OnchainID claim demonstrating accredited or qualified investor status under the operator's chosen reference framework, and receive administrative activation.
+
+    This step is identity-agnostic with respect to specific tokens; it is a baseline gate that ensures solvers are sophisticated, capitalized, and identifiable. See [Solver Registration](/solvers/registration).
+  </Step>
+  <Step title="Per-issuer identity registry">
+    For each token a solver wishes to receive, complete the issuer's own KYC process under that issuer's compliance regime. The issuer's compliance officer adds the solver to the relevant identity registry.
+
+    Tessera neither participates in nor adjudicates this step. The [KYC concierge service](/solvers/kyc-concierge) coordinates the parallel onboarding workflow but does not replace it.
+  </Step>
+</Steps>
+
+The compounding cost of step 2 across many issuers — and the operational burden of maintaining KYC verification, periodic reviews, and sanctions screening across that portfolio — is one of the most significant frictions in the long-tail liquidation market. The KYC concierge service exists specifically to address it.
+
+## Non-reverting compliance rejection
+
+A subtle but critical design choice. When a non-compliant solver bids:
+
+```solidity
+// Inside TesseraAuction.bid()
+emit BidAttempted(auctionId, solver, currentPrice);
+
+bool passed = ComplianceAdapter.isCompliantRecipient(token, solver);
+emit ComplianceChecked(auctionId, solver, passed);
+
+if (!passed) {
+  emit BidRejected(auctionId, solver, "not_compliant");
+  return; // No state change. Auction stays Active.
+}
+```
+
+The transaction does **not revert**. The rejection is permanently on-chain. This means:
+
+- The auction remains active for the next solver attempt.
+- The audit trail records every non-compliant attempt at the block in which it occurred.
+- A regulator, auditor, or counterparty inspecting the chain can prove that the protocol denied a non-compliant recipient at this block.
+
+If the bid were reverted, the rejection would not be on-chain. The audit trail is the product.
+
+## Two-line defense
+
+The compliance check at bid time is the first line of defense. The second line is the **token's own transfer hook**, which fires at `safeTransfer(solver, amount)` during settlement.
+
+If a solver is removed from the identity registry between the check (early in the bid transaction) and the transfer (later in the same transaction), the transfer reverts. The whole bid unwinds. **No collateral moves to a non-compliant recipient under any execution path.**
+
+The atomic execution model of the EVM provides this guarantee for free. Bid validation and settlement happen in a single transaction, so there is no cross-block window in which a solver verified at bid time could fail to be verified at settle time.
+
+## Mid-auction state changes
+
+| Scenario | Handling |
+|---|---|
+| Issuer removes a specific solver from the registry mid-auction | Next bid from that solver fails the pre-flight check. If a bid was already mined and settlement completed, the solver received the token before being removed — that's irrevocable, but the issuer's `forceTransfer` administrative function still applies. |
+| Regulator-mandated suspension of the entire token | Lender may cancel the auction at any time before bidding state. After bidding has begun, cancellation is unavailable to prevent griefing. The regulator's authority to compel `forceTransfer` or pause the token is unaffected. |
+| Compliance adapter swap mid-auction | Not possible. Active auctions complete with the adapter in place at creation; new adapter applies to subsequent auctions. |
+
+## The compliance adapter library
+
+Different permissioned token standards have slightly different compliance models:
+
+- **ERC-3643** uses an identity registry plus modular compliance contracts.
+- **Securitize DS Protocol** uses regulator-controlled investor pools.
+- **Centrifuge V3** uses a `RestrictionManager` pattern that is ERC-1404-flavored.
+
+Each requires a thin adapter that translates the auction layer's eligibility query — *"is this recipient authorized to receive this token?"* — into the underlying compliance check.
+
+The protocol maintains a library of these adapters. Each new permissioned token standard is supported by adding an adapter that satisfies the abstract `IComplianceAdapter` interface — without changes to the auction layer.
+
+The library is open source. It strengthens the standard, attracts contributions, and reduces individual integration costs over time. **The compliance adapter library is the surface through which the protocol stays standard-agnostic.**

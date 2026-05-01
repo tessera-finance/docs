@@ -1,0 +1,129 @@
+---
+title: "Events"
+description: "Every event the protocol emits, in the order it appears, with indexed fields and schemas."
+---
+
+The protocol emits 11 distinct event types across the auction lifecycle, plus a 12th for terminal cancellation. A successful auction produces 11 events across 2 transactions. A rejected-then-settled auction produces ~14 events across 2 transactions.
+
+The event design is intentional and reflects the auditability requirements of permissioned finance: every state transition is logged, every compliance decision is logged, every capital movement is logged. The audit trail is the product.
+
+## Lifecycle order
+
+| # | Event | Tx | Indexed |
+|---|---|---|---|
+| 1 | `AuctionInitialized` | createAuction | `auctionId` |
+| 2 | `AuctionActivated` | createAuction | `auctionId` |
+| 3 | `BidAttempted` | bid | `auctionId`, `solver` |
+| 4 | `ComplianceCheckStarted` | bid | `auctionId`, `solver` |
+| 5 | `ComplianceChecked` | bid | `auctionId`, `solver` |
+| 6 | `BidRejected` | bid (rejection only) | `auctionId`, `solver` |
+| 7 | `SettlementStarted` | bid (settlement) | `auctionId` |
+| 8 | `SettlementPulled` (×2) | bid (settlement) | `auctionId` |
+| 9 | `SettlementDistributed` | bid (settlement) | `auctionId` |
+| 10 | `SettlementPushed` | bid (settlement) | `auctionId`, `solver` |
+| 11 | `AuctionSettled` | bid (settlement) | `auctionId`, `solver` |
+| 12 | `AuctionEnded` | cancelAuction | `auctionId` |
+
+A failed-only flow emits 1, 2, then (3, 4, 5, 6) per rejection attempt, then 12 at cancellation.
+
+A successful flow emits 1, 2, then (3, 4, 5) for the winner, then 7, 8, 8, 9, 10, 11.
+
+## Event schemas
+
+```solidity
+event AuctionInitialized(
+  bytes32 indexed auctionId,
+  address indexed lender,
+  address collateralToken,
+  uint256 amount,
+  uint96 startPrice,
+  uint96 floorPrice,
+  uint40 deadline
+);
+
+event AuctionActivated(bytes32 indexed auctionId);
+
+event BidAttempted(
+  bytes32 indexed auctionId,
+  address indexed solver,
+  uint96 currentPrice
+);
+
+event ComplianceCheckStarted(
+  bytes32 indexed auctionId,
+  address indexed solver,
+  address registry
+);
+
+event ComplianceChecked(
+  bytes32 indexed auctionId,
+  address indexed solver,
+  bool passed
+);
+
+event BidRejected(
+  bytes32 indexed auctionId,
+  address indexed solver,
+  bytes32 reason
+);
+
+event SettlementStarted(
+  bytes32 indexed auctionId,
+  bytes32 adapter
+);
+
+event SettlementPulled(
+  bytes32 indexed auctionId,
+  address from,
+  address to,
+  uint96 amount,
+  bytes4 purpose  // "lender" | "fee"
+);
+
+event SettlementDistributed(
+  bytes32 indexed auctionId,
+  uint96 toLender,
+  uint96 toFeeRecipient
+);
+
+event SettlementPushed(
+  bytes32 indexed auctionId,
+  address indexed solver,
+  uint256 collateralAmount
+);
+
+event AuctionSettled(
+  bytes32 indexed auctionId,
+  address indexed solver,
+  uint96 clearingPrice,
+  uint96 lenderProceeds,
+  uint96 protocolFee
+);
+
+event AuctionEnded(
+  bytes32 indexed auctionId,
+  uint8 status  // Failed | Cancelled
+);
+```
+
+## Rejection reasons
+
+`BidRejected.reason` is a `bytes32` identifier:
+
+| Reason | Meaning |
+|---|---|
+| `"not_compliant"` | Solver failed identity registry verification |
+| `"insufficient_balance"` | Solver's settlement-balance was below clearing price |
+| `"strategy_missing"` | Solver hasn't registered a strategy for the asset class |
+
+The pattern is forward-compatible: indexers should treat unknown reasons as *"rejection, reason X"* rather than as protocol errors.
+
+## Why so many events
+
+Three things must be auditable:
+
+- **Every state transition.** No invisible state changes.
+- **Every compliance decision.** Both passes and rejections produce on-chain records.
+- **Every capital movement.** Lender proceeds, fee, and collateral push all have distinct events.
+
+This produces a small per-auction gas overhead. We treat that as a feature, not a cost.

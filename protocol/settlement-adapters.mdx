@@ -1,0 +1,52 @@
+---
+title: "Settlement Adapters"
+description: "The pluggable settlement interface, the three planned adapters, and the Aqua dependency story."
+---
+
+## The settlement adapter pattern
+
+The most important architectural decision in Tessera is the explicit separation of the auction layer from the settlement layer through a pluggable adapter interface. The auction layer expresses what needs to happen at settlement — pull a specified amount of stablecoin from a specified solver wallet, distribute portions to specified recipients, transfer collateral to the solver, all atomically — but does not specify how. The how is implemented by a settlement adapter that satisfies the abstract interface.
+
+## The three adapters
+
+<Tabs>
+  <Tab title="Aqua">
+    Uses 1inch Aqua's shared-allowance primitive. A solver maintains a single ERC-20 approval to Aqua and ships multiple Tessera strategies that each draw from the solver's wallet on demand.
+
+    **Why default**: highest capital efficiency. No capital is locked per market. This is the basis for the long-tail solver economics — the only configuration where unit economics work for issuers below top-tier AUM.
+
+    **Trade-off**: Aqua dependency. Discussed below.
+  </Tab>
+  <Tab title="Escrow">
+    The traditional model. Solvers post per-auction collateral that is held in escrow during the auction window and either applied to settlement (if they win) or returned (if they don't).
+
+    **Why offered**: operationally simpler, no third-party primitive dependency. Suitable when an issuer or lender prefers the simpler trust model for regulatory or operational reasons. Also a fallback for solvers who do not wish to operate Aqua-shipped strategies.
+
+    **Trade-off**: capital-inefficient. The solver's posted collateral cannot be deployed elsewhere during the auction window.
+  </Tab>
+  <Tab title="Permit">
+    Uses ERC-2612 permit signatures to authorize specific pulls without requiring a standing Aqua approval.
+
+    **Why offered**: intermediate in capital efficiency. The solver does not have a standing approval to a third-party contract, but each bid requires a fresh signature. Hedge against Aqua-specific risk events; option for solvers who prefer not to use Aqua organizationally.
+
+    **Trade-off**: per-bid signature overhead.
+  </Tab>
+</Tabs>
+
+## The Aqua dependency
+
+Tessera's default settlement path depends on 1inch Aqua. This dependency is bounded by design.
+
+### Architectural mitigation
+
+The settlement adapter pattern is itself the primary mitigation. The protocol can operate, with reduced capital efficiency, on the escrow adapter or the permit adapter. **A severe Aqua event does not end the protocol; it shifts solvers to a less efficient adapter while the issue is resolved.**
+
+When Aqua is not yet deployed on a target network, the protocol uses an `AquaShim` contract that mirrors the ship/dock/pull/push surface. The shim is replaced with the real Aqua contract once available; the auction layer requires no changes during this transition.
+
+### Diversification
+
+Aqua's primitive is conceptually generic. Other shared-allowance liquidity protocols may emerge over time, either as competitors to Aqua or as adjacent primitives serving different segments. The settlement adapter pattern means the protocol can integrate any of them as they appear.
+
+<Note>
+  Aqua is the default settlement backend, not an architectural prerequisite. The auction layer depends on the abstract semantics of atomic pull-and-push capital movement, not on any specific implementation.
+</Note>

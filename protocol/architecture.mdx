@@ -1,0 +1,54 @@
+---
+title: "Architecture"
+description: "The four-layer protocol architecture and the contracts that compose it."
+---
+
+The protocol consists of four conceptual layers. Each layer has explicit interfaces. Substituting components within a layer does not require changes to the layers above or below.
+
+## Registry layer
+
+`TesseraRegistry` is the configuration root. It holds:
+
+- The mapping of authorized lending protocols (`allowedLenders`)
+- The mapping of authoritative oracles per collateral token (`oracle[token]`)
+- The mapping of compliance adapters per token (`complianceAdapter[token]`)
+- The asset class assignment per token (`tokenAssetClass[token]`)
+- Per-asset-class auction parameters (start price multiplier, floors, duration, oracle staleness)
+- The protocol fee in basis points and the fee recipient
+- The active settlement adapter
+- The pause switch
+
+The registry is the only contract that requires governance write access in normal operation; everything else is permissionless or operates via direct caller authentication.
+
+## Identity & bond layer
+
+Two contracts work together at this layer:
+
+**`SolverRegistry`** — the solver state machine. A solver moves through:
+
+```
+None → Pending (after register + bond) → Active (after activate)
+                                       ↓
+                                  Suspended (admin)
+                                       ↓
+                                  Withdrawn (terminal)
+```
+
+Only `Active` solvers can bid. Bonds are slashable buffers and serve as participation gates that deter frivolous registration.
+
+**`ERC3643ComplianceAdapter`** — a thin facade over the issuer's identity registry. The auction layer never speaks directly to a token's `IIdentityRegistry`; it asks the adapter `isCompliantRecipient(token, recipient)`, and the adapter delegates to whatever underlying compliance mechanism the issuer uses. Different token standards (ERC-3643, Securitize DS Protocol, Centrifuge RestrictionManager) get different adapter implementations. The auction layer doesn't know or care.
+
+## Auction layer
+
+`TesseraAuction` is the core. It implements the Dutch auction state machine, the per-asset-class price decay, and the eligibility checks that gate every bid.
+
+The auction layer is **independent of the settlement mechanism beneath it**. It expresses what needs to happen — pull a specified amount of stablecoin from the solver, distribute portions to specified recipients, transfer collateral to the solver, all atomically — but does not specify how. The how is implemented by a settlement adapter.
+
+`LiquidationRouter` sits in front of `TesseraAuction` as the public entry point for lenders. It validates lender authorization, oracle freshness, and parameter bounds before forwarding to the auction.
+
+## Settlement layer
+
+The abstracted interface that performs the atomic capital movement. The default implementation uses 1inch Aqua's shared-allowance primitive. Alternative implementations are described in [Settlement Adapters](/protocol/settlement-adapters).
+
+The settlement adapter pattern is the most important architectural decision in the protocol. It is the basis for the dependency-management discussion below.
+

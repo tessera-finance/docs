@@ -1,133 +1,27 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
-icon: 'star'
+title: "Tessera"
+description: "The liquidation network for permissioned real-world assets."
 ---
 
-## Setting up
+Tessera is a liquidation protocol for permissioned real-world assets. It runs identity-aware Dutch auctions for ERC-3643-style collateral, gates participation through the issuer's identity registry, and settles atomically through a pluggable settlement adapter.
 
-Get your documentation site up and running in minutes.
+These docs describe the protocol — its primitives, its architecture, its invariants. They are the technical reference for anyone reasoning about how Tessera works.
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="What Tessera does" icon="circle-info" href="/what-is-tessera">
+    The protocol in one paragraph, the three-actor structure, the four-layer architecture.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="The composability problem" icon="puzzle-piece" href="/protocol/composability-problem">
+    Why standard liquidation breaks for permissioned tokens, and why incumbents do not extend into the long tail.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Architecture" icon="layer-group" href="/protocol/architecture">
+    Registry, identity, auction, and settlement layers. Composed with explicit interfaces.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Invariants" icon="shield" href="/protocol/invariants">
+    What the protocol guarantees, and how those guarantees are enforced on-chain.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## A note on naming
 
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
-
-## Make your content agent ready
-
-Make your docs work for humans and AI agents alike.
-
-<Columns cols={2}>
-  <Card
-    title="Prompt component"
-    icon="robot"
-    href="/agent-ready/prompt"
-  >
-    Embed shareable AI prompts readers can copy or open in Cursor.
-  </Card>
-  <Card
-    title="Visibility"
-    icon="eye"
-    href="/agent-ready/visibility"
-  >
-    Show different content to humans and agents reading your docs.
-  </Card>
-  <Card
-    title="Contextual menu"
-    icon="bolt"
-    href="/agent-ready/contextual"
-  >
-    Give readers one-click access to Claude, ChatGPT, Cursor, and more.
-  </Card>
-  <Card
-    title="AI coding tools"
-    icon="wand-magic-sparkles"
-    href="/ai-tools/claude-code"
-  >
-    Set up Claude Code, Cursor, or Windsurf with Mintlify's skill.
-  </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+The protocol's name comes from the Latin and Italian *tessera*, the small individual tile used in mosaic work. Each compliant liquidation is a discrete tile in a larger compliance picture; each verified solver, each issuer integration, each settled auction is a small precise unit that composes into a larger continuous infrastructure. *Tesserae* historically referred to the small clay or stone tablets used as identity credentials in Ancient Rome and the Byzantine Empire — a direct etymological link to the identity-verification core of the protocol.

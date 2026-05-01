@@ -1,0 +1,50 @@
+---
+title: "The Composability Problem"
+description: "Why standard liquidation breaks for permissioned RWAs, and what the state of the art looks like at the top of the market."
+---
+
+## Permissioned tokens break standard liquidation
+
+The architecture of decentralized lending is built around a single assumption: when a position becomes undercollateralized, the protocol can sell the seized collateral to any buyer who shows up with the right currency. This assumption produces clean economic guarantees. Lenders are protected from deficit losses, borrowers face predictable liquidation incentives, and arbitrageurs ensure that clearing prices remain close to fair market value. It is the foundation of every successful DeFi lending protocol from Compound to Aave to Morpho.
+
+Permissioned token standards reject this assumption at the contract level. ERC-3643, the dominant standard for regulated tokenized securities, contains a transfer hook that calls into an issuer-controlled identity registry before completing any transfer. If the recipient is not in the registry, the transfer reverts. There is no override available to a lending protocol acting in liquidation. The seized collateral cannot be sold to any buyer with the right currency because the registry restricts who that buyer can be.
+
+This is not a bug in ERC-3643. It is the entire purpose of the standard.
+
+<Note>
+Regulated securities require investor verification under applicable law — Reg D in the United States, MiFID II in the European Union, MAS qualified investor frameworks in Singapore. The identity registry is the on-chain enforcement mechanism for those off-chain regulatory obligations. Removing the restriction would make ERC-3643 useless as a regulated token standard. The challenge for DeFi infrastructure is to work with the restriction, not around it.
+</Note>
+
+## The state of the art at the top of the market
+
+Three approaches converged at the top of the market through 2025–2026. Each is appropriate for the asset classes it serves, and each has a structural reason for not extending into the long tail.
+
+### Aave Horizon
+
+Makes the receipt token non-transferable entirely and grants the issuer an administrative role for forced transfers between pre-whitelisted parties. Horizon has accumulated $365M+ in deposits across Securitize-issued tokens, Centrifuge V3 vaults, Superstate's USCC and USTB, Apollo's ACRED, and a small set of additional curated assets.
+
+The model works for issuers operating at scale because each is willing to invest in the operational relationships required to maintain a small set of pre-whitelisted liquidators. **It does not extend to the long tail** because the per-issuer governance overhead — Aave Risk Framework Committee proposals, LlamaRisk and Chaos Labs reviews, community votes — exceeds any plausible economics for an issuer with $25M in tokenized AUM.
+
+### Morpho's curated vaults
+
+Distributes the curation function across independent specialist firms — Steakhouse, Gauntlet, Re7, MEV Capital, Block Analitica — each maintaining their own asset universe and earning fees on the deposits they curate. This has produced more diverse coverage than Horizon, including the Centrifuge institutional RWA market that crossed substantial deposits in 2025.
+
+But the model is fundamentally constrained by curator economics: a curator considering a new market must weigh engineering and operational cost against expected fee income. **For a market with a $20M addressable deposit base and infrequent liquidations, the curator economics simply do not work.** Morpho will continue to be the right venue for the top hundred issuers; it will not be the venue for the next thousand.
+
+### RedStone Settle
+
+Lifts liquidation off-chain into a centralized auction layer where KYC'd solvers compete in milliseconds with on-chain settlement only at clearing. This is technically elegant for high-volume markets where solver attention is sustained.
+
+The economics, however, presume per-market dedicated solver capital and the operational sophistication to maintain solver desks across many distinct asset classes. **This is a model for the largest issuers, not for the long tail.**
+
+## What none of these solve
+
+What none of these approaches solves, and what none has structural incentive to solve, is the long-tail segment: the three to four hundred ERC-3643 issuers operating between $25M and $250M in tokenized AUM, below the threshold where curator-mediated, governance-curated, or dedicated-solver-desk infrastructure is economic.
+
+## The cost of the gap
+
+The cost of this gap is not just a missed opportunity for solvers and lenders. It is a structural drag on the entire tokenization narrative.
+
+Every issuer considering tokenization must, at some point, answer the question of what borrowing utility their token will have. If the answer is *"none, because no liquidation pathway exists,"* tokenization becomes a marketing exercise rather than a genuine financialization step. Investors who would otherwise hold the token because it enables on-chain leverage do not do so. The token's secondary market remains thin. The issuer's case for tokenizing the next product weakens.
+
+This is why DeFi utilization of tokenized assets sits at approximately nine percent against tokenized RWA volumes that have crossed $26B in distributed value. **The unutilized 91% is not idle by choice; it is idle by necessity.** The infrastructure to make it useful does not exist for the segment of issuers who hold most of it.
