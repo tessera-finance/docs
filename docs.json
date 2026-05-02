@@ -62,5 +62,20 @@
       "x": "https://x.com/tessera_finance",
       "github": "https://github.com/tessera-finance"
     }
+  },
+  "seo": {
+    "metatags": {
+      "og:title": "Tessera",
+      "og:description": "Liquidation infrastructure for permissioned real-world assets. Compliant Dutch auctions and atomic settlement for ERC-3643 collateral, built on 1inch Aqua.",
+      "og:image": "/images/og.png",
+      "og:image:width": "1200",
+      "og:image:height": "630",
+      "og:type": "website",
+      "twitter:card": "summary_large_image",
+      "twitter:title": "Tessera",
+      "twitter:description": "Liquidation infrastructure for permissioned real-world assets. Compliant Dutch auctions and atomic settlement for ERC-3643 collateral, built on 1inch Aqua.",
+      "twitter:image": "/images/og.png",
+      "twitter:site": "@tessera_finance"
+    }
   }
 }
